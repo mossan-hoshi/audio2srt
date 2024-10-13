@@ -1,6 +1,7 @@
 from faster_whisper import WhisperModel
 from pathlib import Path
 import srt
+import re
 from datetime import timedelta
 from typing import Dict, List
 import csv
@@ -29,7 +30,9 @@ def load_replace_terms(file_path: str = "./replace_terms.csv") -> Dict[str, str]
 DEFAULT_REPLACE_TERMS = load_replace_terms()
 
 
-def transcribe_audio(model: WhisperModel, audio_file_path: Path, language: str = None) -> List[Word]:
+def transcribe_audio(
+    model: WhisperModel, audio_file_path: Path, language: str = None
+) -> List[Word]:
     """音声ファイルを文字起こしし、単語リストを返す"""
     transcribe_args = {
         "audio": audio_file_path,
@@ -61,15 +64,16 @@ def replace_terms(
 
     # 置換辞書の各エントリに対して処理を行う
     for term_to_search, term_to_replace in term_replace_dict.items():
-        start_index = 0
-        while True:
-            # 検索語を連結文字列内で探す
-            found_index = concat_str.find(term_to_search, start_index)
-            if found_index == -1:
-                break
+        # 正規表現を使用して全てのマッチを探す
+        pattern = re.compile(term_to_search)
+        matches = list(pattern.finditer(concat_str))
 
-            # 検索語の終了インデックスを計算
-            end_index = found_index + len(term_to_search)
+        # 最も手前のマッチを選択し、同じ開始位置の中で最も長いものを選ぶ
+        while matches:
+            best_match = min(matches, key=lambda m: (m.start(), -len(m.group())))
+            found_index = best_match.start()
+            end_index = best_match.end()
+
             # 影響を受ける単語のインデックスを特定
             affected_word_indices = [
                 i
@@ -80,7 +84,14 @@ def replace_terms(
             ]
 
             # 置換処理を実行
-            replace_term(words, word_start_indices, term_to_replace, found_index, end_index, affected_word_indices)
+            replace_term(
+                words,
+                word_start_indices,
+                term_to_replace,
+                found_index,
+                end_index,
+                affected_word_indices,
+            )
 
             # 連結文字列を更新
             concat_str = (
@@ -92,12 +103,20 @@ def replace_terms(
                 index + length_diff if index > found_index else index
                 for index in word_start_indices
             ]
-            # 次の検索開始位置を設定
-            start_index = found_index + len(term_to_replace)
+            
+            matches = list(pattern.finditer(concat_str))
 
     return words
 
-def replace_term(words, word_start_indices, replace_term, found_index, end_index, affected_word_indices):
+
+def replace_term(
+    words,
+    word_start_indices,
+    replace_term,
+    found_index,
+    end_index,
+    affected_word_indices,
+):
     """単語リスト内の特定の用語を置換する補助関数"""
     for idx, i in enumerate(affected_word_indices):
         word = words[i]
@@ -110,10 +129,8 @@ def replace_term(words, word_start_indices, replace_term, found_index, end_index
         if idx == 0:
             # 最初の影響を受ける単語の場合、置換を行う
             word.word = (
-                        word.word[:relative_start]
-                        + replace_term
-                        + word.word[relative_end:]
-                    )
+                word.word[:relative_start] + replace_term + word.word[relative_end:]
+            )
         else:
             # それ以外の影響を受ける単語の場合、該当部分を削除
             word.word = word.word[:relative_start] + word.word[relative_end:]
@@ -181,6 +198,8 @@ def generate_srt_segments(
         )
 
     return srt_segments
+
+
 def main(
     audio_file_path: Path,
     model: WhisperModel,
@@ -193,10 +212,10 @@ def main(
     """メイン処理関数"""
     # 音声ファイルを文字起こし
     words = transcribe_audio(model, audio_file_path, language)
-    
+
     # 特定の用語を置換
     words = replace_terms(words, term_replace_dict)
-    
+
     # SRT形式のセグメントを生成
     srt_segments = generate_srt_segments(
         words, char_num, max_line_str_num, gap_seconds_threshold
@@ -268,6 +287,14 @@ if __name__ == "__main__":
 
     model = WhisperModel(args.model, device=args.device, compute_type=args.compute_type)
 
-    term_replace_dict = load_replace_terms(args.replace_terms)
+    term_replace_dict = load_replace_terms(args.replace_terms_path)
 
-    main(audio_file_path, model, term_replace_dict, args.char_num, args.max_line_str_num, args.gap_seconds_threshold, language=args.language)
+    main(
+        audio_file_path,
+        model,
+        term_replace_dict,
+        args.char_num,
+        args.max_line_str_num,
+        args.gap_seconds_threshold,
+        language=args.language,
+    )

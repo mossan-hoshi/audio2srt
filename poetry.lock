@@ -665,6 +665,16 @@ test = ["build[virtualenv] (>=1.0.3)", "filelock (>=3.4.0)", "ini2toml[lite] (>=
 type = ["importlib-metadata (>=7.0.2)", "jaraco.develop (>=7.21)", "mypy (==1.11.*)", "pytest-mypy"]
 
 [[package]]
+name = "srt"
+version = "3.5.3"
+description = "A tiny library for parsing, modifying, and composing SRT files."
+optional = false
+python-versions = ">=2.7"
+files = [
+    {file = "srt-3.5.3.tar.gz", hash = "sha256:4884315043a4f0740fd1f878ed6caa376ac06d70e135f306a6dc44632eed0cc0"},
+]
+
+[[package]]
 name = "sympy"
 version = "1.13.3"
 description = "Computer algebra system (CAS) in Python"
@@ -849,4 +859,4 @@ zstd = ["zstandard (>=0.18.0)"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.11"
-content-hash = "146525c0285a02eb053c5c0618417319272323b3a3009746970be7bb18be2b05"
+content-hash = "c848499473dbd11e44e7303e0ed5409db6184266fdd3a21dfecd53c0c30bd4a0"

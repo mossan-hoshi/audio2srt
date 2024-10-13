@@ -57,8 +57,9 @@ poetry install
 
 1. **Preparing the CSV File**: Edit the CSV file `replace_terms.csv` as needed for term settings. Please create it in the following format:
 
-- Column 1: Detected String
-- Column 2: Replacement String (leave empty if you want to delete)
+- Column 1: Detected string or regular expression pattern
+- Column 2: Replacement string or regular expression pattern (specify empty if you want to delete)
+
 
 [Sample Term Setting CSV File]
 
@@ -80,7 +81,7 @@ EV,EeVee
 チャットGPD,ChatGPT
 ```
 
-6. **Running the Script**: Finally, execute the following command to run the script.
+1. **Running the Script**: Finally, execute the following command to run the script.
 
 ```bash
 usage: whisperv3.py [-h] [--model MODEL] [--device DEVICE]

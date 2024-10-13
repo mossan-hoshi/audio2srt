@@ -9,6 +9,7 @@ readme = "README.md"
 [tool.poetry.dependencies]
 python = "^3.11"
 faster-whisper = "^1.0.3"
+srt = "^3.5.3"
 
 
 [build-system]
