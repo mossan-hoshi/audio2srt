@@ -57,6 +57,7 @@ def replace_terms(
     """単語リスト内の特定の用語を置換する"""
     # 全ての単語を連結した文字列を作成
     concat_str = "".join(word.word for word in words)
+    last_concat_str = ""
     # 各単語の開始インデックスを計算
     word_start_indices = [
         sum(len(words[i].word) for i in range(j)) for j in range(len(words))
@@ -69,7 +70,7 @@ def replace_terms(
         matches = list(pattern.finditer(concat_str))
 
         # 最も手前のマッチを選択し、同じ開始位置の中で最も長いものを選ぶ
-        while matches:
+        while matches and last_concat_str != concat_str:
             best_match = min(matches, key=lambda m: (m.start(), -len(m.group())))
             found_index = best_match.start()
             end_index = best_match.end()
@@ -94,6 +95,7 @@ def replace_terms(
             )
 
             # 連結文字列を更新
+            last_concat_str = concat_str
             concat_str = (
                 concat_str[:found_index] + term_to_replace + concat_str[end_index:]
             )
