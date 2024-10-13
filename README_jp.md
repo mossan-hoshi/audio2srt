@@ -1,5 +1,7 @@
 faster-whisperを使って。Whisper-Large-V3で音声文字起こしをして。事前に指定した用語変換やフィラーワードの削除等をした上でセグメントをいい感じに再構築してSRTファイルとして出力するPythonスクリプトを紹介します
 
+【[解説記事](https://zenn.dev/mossan_hoshi/articles/20241011_faster_whisper_srt) 】
+
 ## 目次
 1. はじめに
 2. 環境構築・使用方法

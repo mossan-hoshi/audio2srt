@@ -1,4 +1,4 @@
-【[日本語](./README_jp.md)】
+【[日本語](./README_jp.md) / [解説記事](https://zenn.dev/mossan_hoshi/articles/20241011_faster_whisper_srt) 】
 
 This is a Python script that uses faster-whisper to transcribe audio usin
 
