@@ -57,56 +57,51 @@ def replace_terms(
     """単語リスト内の特定の用語を置換する"""
     # 全ての単語を連結した文字列を作成
     concat_str = "".join(word.word for word in words)
-    last_concat_str = ""
     # 各単語の開始インデックスを計算
     word_start_indices = [
         sum(len(words[i].word) for i in range(j)) for j in range(len(words))
     ]
 
-    # 置換辞書の各エントリに対して処理を行う
     for term_to_search, term_to_replace in term_replace_dict.items():
-        # 正規表現を使用して全てのマッチを探す
+        # 正規表現をコンパイル
         pattern = re.compile(term_to_search)
-        matches = list(pattern.finditer(concat_str))
 
-        # 最も手前のマッチを選択し、同じ開始位置の中で最も長いものを選ぶ
-        while matches and last_concat_str != concat_str:
-            best_match = min(matches, key=lambda m: (m.start(), -len(m.group())))
-            found_index = best_match.start()
-            end_index = best_match.end()
+        # 文字列全体で置換を実行し、置換の詳細情報を取得
+        def replacement(match):
+            # 置換後の文字列を取得（キャプチャグループを反映）
+            replaced_text = match.expand(term_to_replace)
+            # 置換位置を取得
+            start_idx = match.start()
+            end_idx = match.end()
 
             # 影響を受ける単語のインデックスを特定
             affected_word_indices = [
                 i
                 for i, word_start in enumerate(word_start_indices)
-                if (word_start <= found_index < word_start + len(words[i].word))
-                or (word_start < end_index <= word_start + len(words[i].word))
-                or (found_index <= word_start < end_index)
+                if (word_start < end_idx and word_start + len(words[i].word) > start_idx)
             ]
 
-            # 置換処理を実行
+            # 単語リストを更新
             replace_term(
                 words,
                 word_start_indices,
-                term_to_replace,
-                found_index,
-                end_index,
+                replaced_text,
+                start_idx,
+                end_idx,
                 affected_word_indices,
             )
 
-            # 連結文字列を更新
-            last_concat_str = concat_str
-            concat_str = (
-                concat_str[:found_index] + term_to_replace + concat_str[end_index:]
-            )
-            # 単語の開始インデックスを調整
-            length_diff = len(term_to_replace) - (end_index - found_index)
-            word_start_indices = [
-                index + length_diff if index > found_index else index
-                for index in word_start_indices
-            ]
-            
-            matches = list(pattern.finditer(concat_str))
+            # 置換による長さの変化を計算
+            length_diff = len(replaced_text) - (end_idx - start_idx)
+            # 単語開始インデックスを更新
+            for i in range(len(word_start_indices)):
+                if word_start_indices[i] > start_idx:
+                    word_start_indices[i] += length_diff
+
+            return replaced_text
+
+        # 置換を実行
+        concat_str = pattern.sub(replacement, concat_str)
 
     return words
 
@@ -114,28 +109,40 @@ def replace_terms(
 def replace_term(
     words,
     word_start_indices,
-    replace_term,
+    replaced_text,
     found_index,
     end_index,
     affected_word_indices,
 ):
     """単語リスト内の特定の用語を置換する補助関数"""
-    for idx, i in enumerate(affected_word_indices):
+    # 置換後のテキストを文字リストに変換
+    replaced_chars = list(replaced_text)
+    replaced_char_index = 0
+
+    for i in affected_word_indices:
         word = words[i]
         word_start = word_start_indices[i]
-        # 置換対象の相対的な開始位置を計算
-        relative_start = max(0, found_index - word_start)
-        # 置換対象の相対的な終了位置を計算
-        relative_end = min(len(word.word), end_index - word_start)
+        word_end = word_start + len(word.word)
 
-        if idx == 0:
-            # 最初の影響を受ける単語の場合、置換を行う
-            word.word = (
-                word.word[:relative_start] + replace_term + word.word[relative_end:]
-            )
-        else:
-            # それ以外の影響を受ける単語の場合、該当部分を削除
-            word.word = word.word[:relative_start] + word.word[relative_end:]
+        # 単語内の置換範囲を計算
+        overlap_start = max(word_start, found_index)
+        overlap_end = min(word_end, end_index)
+
+        # 単語内の相対的な開始・終了位置
+        relative_start = overlap_start - word_start
+        relative_end = overlap_end - word_start
+
+        # 置換後の文字を該当部分に反映
+        num_chars_to_replace = relative_end - relative_start
+        chars_to_insert = replaced_chars[
+            replaced_char_index : replaced_char_index + num_chars_to_replace
+        ]
+
+        word.word = (
+            word.word[:relative_start] + "".join(chars_to_insert) + word.word[relative_end:]
+        )
+
+        replaced_char_index += num_chars_to_replace
 
 
 def create_subtitle(index: int, start: float, end: float, content: str) -> srt.Subtitle:
@@ -178,10 +185,12 @@ def split_into_lines(text: str, max_line_length: int) -> List[str]:
         lines.append(current_line)
     return lines
 
+
 def generate_srt_segments(
     words: List[Word],
     char_num: int = 48,
     max_line_str_num: int = 24,
+    max_lines_per_segment: int = 2,
     gap_seconds_threshold: int = 3,
 ) -> List[srt.Subtitle]:
     """単語リストからSRT形式の字幕セグメントを生成し、英単語が行をまたがないようにする"""
@@ -194,9 +203,14 @@ def generate_srt_segments(
     for word in words:
         if segment_start is None:
             segment_start = word.start
-        elif (
-            word.start - segment_end > gap_seconds_threshold
-            or len(current_segment) + len(word.word) > char_num
+
+        # Create potential new segment content
+        potential_segment = current_segment + word.word
+        potential_lines = split_into_lines(potential_segment.strip(), max_line_str_num)
+        if (
+            word.start - (segment_end if segment_end is not None else segment_start) > gap_seconds_threshold
+            or len(potential_segment) > char_num
+            or len(potential_lines) > max_lines_per_segment
         ):
             # 現在のセグメントを行に分割
             content_lines = split_into_lines(current_segment.strip(), max_line_str_num)
@@ -205,10 +219,11 @@ def generate_srt_segments(
                 create_subtitle(segment_index, segment_start, segment_end, content)
             )
             segment_index += 1
-            current_segment = ""
+            current_segment = word.word
             segment_start = word.start
+        else:
+            current_segment = potential_segment
 
-        current_segment += word.word
         segment_end = word.end
 
         print(f"  [{word.start:.2f}s -> {word.end:.2f}s] {word.word}")
@@ -229,6 +244,7 @@ def main(
     term_replace_dict: Dict[str, str],
     char_num: int = 48,
     max_line_str_num: int = 24,
+    max_lines_per_segment: int = 2,
     gap_seconds_threshold: int = 3,
     language: str = None,
 ):
@@ -241,7 +257,11 @@ def main(
 
     # SRT形式のセグメントを生成
     srt_segments = generate_srt_segments(
-        words, char_num, max_line_str_num, gap_seconds_threshold
+        words,
+        char_num,
+        max_line_str_num,
+        max_lines_per_segment,
+        gap_seconds_threshold,
     )
 
     # SRTセグメントを文字列に変換
@@ -289,13 +309,19 @@ if __name__ == "__main__":
         "--char_num",
         type=int,
         default=48,
-        help="1行あたりの最大文字数 (デフォルト: 48)",
+        help="1セグメントあたりの最大文字数 (デフォルト: 48)",
     )
     parser.add_argument(
         "--max_line_str_num",
         type=int,
         default=24,
-        help="最大行数 (デフォルト: 24)",
+        help="1行の最大文字数 (デフォルト: 24)",
+    )
+    parser.add_argument(
+        "--max_lines_per_segment",
+        type=int,
+        default=2,
+        help="セグメントの最大行数 (デフォルト: 2)",
     )
     parser.add_argument(
         "--gap_seconds_threshold",
@@ -318,6 +344,7 @@ if __name__ == "__main__":
         term_replace_dict,
         args.char_num,
         args.max_line_str_num,
+        args.max_lines_per_segment,
         args.gap_seconds_threshold,
         language=args.language,
     )
