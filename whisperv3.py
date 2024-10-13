@@ -175,17 +175,21 @@ def generate_srt_segments(
             # 新しいセグメントを開始する条件：
             # 1. 前の単語との間隔が閾値を超える
             # 2. 現在のセグメントの文字数が上限を超える
+            segment_content = "\n".join(
+                [
+                    current_segment[i : i + max_line_str_num]
+                    for i in range(0, len(current_segment), max_line_str_num)
+                ]
+            )
+            # 英単語が複数行にまたがるのを防ぐための正規表現置換
+            segment_content = re.sub(r'([a-zA-Z]+)\n([a-zA-Z]+)', r'\1\2\n', segment_content)
+
             srt_segments.append(
                 create_subtitle(
                     segment_index,
                     segment_start,
                     segment_end,
-                    "\n".join(
-                        [
-                            current_segment[i : i + max_line_str_num]
-                            for i in range(0, len(current_segment), max_line_str_num)
-                        ]
-                    ),
+                    segment_content,
                 )
             )
             segment_index += 1  # 次のセグメントのインデックスを増やす
@@ -272,13 +276,13 @@ if __name__ == "__main__":
         "--char_num",
         type=int,
         default=48,
-        help="1行あたりの最大文字数 (デフォルト: 48)",
+        help="1セグメントあたりの最大文字数 (デフォルト: 48)",
     )
     parser.add_argument(
         "--max_line_str_num",
         type=int,
         default=24,
-        help="最大行数 (デフォルト: 24)",
+        help="ライン文字数 (デフォルト: 24)",
     )
     parser.add_argument(
         "--gap_seconds_threshold",
