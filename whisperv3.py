@@ -148,55 +148,76 @@ def create_subtitle(index: int, start: float, end: float, content: str) -> srt.S
     )
 
 
+def split_into_lines(text: str, max_line_length: int) -> List[str]:
+    """テキストを行に分割し、英単語が行をまたがないようにする"""
+    lines = []
+    index = 0
+    text_length = len(text)
+    while index < text_length:
+        current_line = ''
+        line_start_index = index
+        while index < text_length and len(current_line) < max_line_length:
+            current_char = text[index]
+            current_line += current_char
+            index += 1
+
+        # 英単語が行末で分割されていないか確認
+        if index < text_length and text[index - 1].isalpha():
+            # 次の文字もアルファベットなら、英単語が分割されている可能性あり
+            if text[index].isalpha():
+                # 英単語の先頭を探すためにバックトラック
+                back_index = index - 1
+                while back_index >= line_start_index and text[back_index].isalpha():
+                    back_index -= 1
+                # 行の先頭で英単語が始まっている場合はそのまま
+                if back_index >= line_start_index:
+                    # 単語を次の行に移動
+                    shift = back_index - line_start_index + 1
+                    current_line = current_line[:shift]
+                    index = back_index + 1
+        lines.append(current_line)
+    return lines
+
 def generate_srt_segments(
     words: List[Word],
     char_num: int = 48,
     max_line_str_num: int = 24,
     gap_seconds_threshold: int = 3,
 ) -> List[srt.Subtitle]:
-    """単語リストからSRT形式の字幕セグメントを生成する"""
-    srt_segments = []  # 生成されたSRT字幕セグメントのリスト
-    current_segment = ""  # 現在処理中の字幕セグメントのテキスト
-    segment_start = None  # 現在の字幕セグメントの開始時間
-    segment_end = None  # 現在の字幕セグメントの終了時間
-    segment_index = 1  # 字幕セグメントのインデックス
+    """単語リストからSRT形式の字幕セグメントを生成し、英単語が行をまたがないようにする"""
+    srt_segments = []
+    current_segment = ""
+    segment_start = None
+    segment_end = None
+    segment_index = 1
 
     for word in words:
         if segment_start is None:
-            segment_start = word.start  # 最初の単語の場合、セグメント開始時間を設定
+            segment_start = word.start
         elif (
             word.start - segment_end > gap_seconds_threshold
             or len(current_segment) + len(word.word) > char_num
         ):
-            # 新しいセグメントを開始する条件：
-            # 1. 前の単語との間隔が閾値を超える
-            # 2. 現在のセグメントの文字数が上限を超える
+            # 現在のセグメントを行に分割
+            content_lines = split_into_lines(current_segment.strip(), max_line_str_num)
+            content = '\n'.join(content_lines)
             srt_segments.append(
-                create_subtitle(
-                    segment_index,
-                    segment_start,
-                    segment_end,
-                    "\n".join(
-                        [
-                            current_segment[i : i + max_line_str_num]
-                            for i in range(0, len(current_segment), max_line_str_num)
-                        ]
-                    ),
-                )
+                create_subtitle(segment_index, segment_start, segment_end, content)
             )
-            segment_index += 1  # 次のセグメントのインデックスを増やす
-            current_segment = ""  # 新しいセグメントのテキストをリセット
-            segment_start = word.start  # 新しいセグメントの開始時間を設定
+            segment_index += 1
+            current_segment = ""
+            segment_start = word.start
 
-        current_segment += word.word  # 現在の単語をセグメントに追加
-        segment_end = word.end  # セグメントの終了時間を更新
+        current_segment += word.word
+        segment_end = word.end
 
-        print(f"  [{word.start:.2f}s -> {word.end:.2f}s] {word.word}")  # デバッグ用出力
+        print(f"  [{word.start:.2f}s -> {word.end:.2f}s] {word.word}")
 
     if current_segment:
-        # 最後のセグメントを追加
+        content_lines = split_into_lines(current_segment.strip(), max_line_str_num)
+        content = '\n'.join(content_lines)
         srt_segments.append(
-            create_subtitle(segment_index, segment_start, segment_end, current_segment)
+            create_subtitle(segment_index, segment_start, segment_end, content)
         )
 
     return srt_segments
